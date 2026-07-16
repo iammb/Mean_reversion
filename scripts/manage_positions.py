@@ -109,6 +109,16 @@ def _handle_open_gtt(t, engine, cfg, time_stop):
 
 def _handle_open_pair(t, engine, cfg, time_stop, now):
     inst = _inst(t)
+
+    # short-only invariant: if both exit legs filled (OCO race) we'd be net
+    # long - flatten immediately, whatever else is going on
+    net = engine.net_position_qty(inst)
+    if net > 0:
+        log.error(f"{t['symbol']}: NET LONG {net} detected (OCO race) - flattening")
+        engine.flatten_accidental_long(inst, net)
+        t.update(status="CLOSED", exit_reason="OCO_RACE_FLATTENED")
+        return
+
     sl_status = engine.order_status(t["sl_order_id"]) if t["sl_order_id"] else "NONE"
     tgt_status = engine.order_status(t["target_order_id"]) if t["target_order_id"] else "NONE"
 

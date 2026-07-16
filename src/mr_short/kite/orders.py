@@ -193,6 +193,16 @@ class OrderEngine:
             product=self._product_code(inst), order_type="MARKET", validity="DAY",
         )
 
+    def flatten_accidental_long(self, inst: Instrument, qty: int) -> str:
+        """This is a SHORT-ONLY system. If both exit legs of a pair ever fill
+        (OCO race) the account would be net long - dump it immediately."""
+        return self._place(
+            f"FLATTEN ACCIDENTAL LONG {inst.tradingsymbol} x{qty} MARKET SELL",
+            exchange=inst.exchange, tradingsymbol=inst.tradingsymbol,
+            transaction_type="SELL", quantity=qty,
+            product=self._product_code(inst), order_type="MARKET", validity="DAY",
+        )
+
     def cancel(self, order_id: str, why: str):
         if self.dry_run or str(order_id).startswith("DRY-"):
             log.info(f"[DRY RUN] CANCEL {order_id} ({why})")
