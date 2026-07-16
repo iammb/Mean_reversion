@@ -14,14 +14,15 @@ risk:
   max_total_exposure_pct: 60  # total short notional cap, % of capital
   max_daily_loss_pct: 2.0     # kill switch: no new entries once the day P&L
                               # (realised + M2M, as Kite reports it) is past this
-  min_reward_risk: 2.0        # skip candidates with worse than 2:1
-  max_stop_distance_pct: 3.5  # skip if stop is further than this from entry
+  min_reward_risk: 1.2        # v2: wider 1-ATR stops shrink the ratio; backtest
+                              # says 1.2 with a 51% win rate beats 2.0 with 30%
+  max_stop_distance_pct: 6.0  # v2: room for the 1-ATR stop (was 3.5)
 
 filters:
   min_score: 50               # composite scanner score floor
-  allowed_setups:             # setup types worth trading
-    - "DEAD-CAT BOUNCE"
-    - "BLOWOFF EXTENSION"
+  allowed_setups:             # v2: DEAD-CAT BOUNCE only. BLOWOFF EXTENSION
+    - "DEAD-CAT BOUNCE"       # backtested at PF 0.61 - fading strength in
+                              # India loses; shorting bounced weakness wins
   fno_only: true              # only F&O names (shortable overnight)
   max_adx: 35                 # never fade a freight train
   exclude_ban_list: true      # drop names in the NSE F&O ban list

@@ -28,6 +28,8 @@ ATR_STRETCH_SIGNAL, ATR_STRETCH_EXTREME = 2.0, 3.0
 RET5_SIGNAL, RET5_EXTREME = 0.08, 0.15
 VOL_CLIMAX_MULT = 2.0
 ADX_HOT = 35.0
+STOP_ATR_MULT = 1.0   # backtest-validated: 0.25 ATR stops died 63% of the time;
+                      # 1.0 ATR lifted win rate from 40% to 51% on DCB trades
 
 
 def evaluate(symbol: str, df: pd.DataFrame, min_turnover_cr: float):
@@ -142,7 +144,7 @@ def evaluate(symbol: str, df: pd.DataFrame, min_turnover_cr: float):
     day_low = low.iloc[-1]
     swing_high = high.iloc[-5:].max()
     entry = c                                   # or next-day break of scan-day low
-    stop = max(swing_high, c) + 0.25 * atr14
+    stop = max(swing_high, c) + STOP_ATR_MULT * atr14
     target = ema20.iloc[-1]                     # revert to the mean
     risk = stop - entry
     reward = entry - target

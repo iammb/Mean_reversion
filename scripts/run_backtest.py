@@ -31,6 +31,14 @@ def main():
     ap.add_argument("--all-stocks", action="store_true",
                     help="include non-F&O names (cash-short territory)")
     ap.add_argument("--fresh", action="store_true", help="ignore the price cache")
+    # strategy geometry - defaults are the LIVE (v2) settings
+    ap.add_argument("--setups", nargs="+", default=["DEAD-CAT BOUNCE"],
+                    help='default: DEAD-CAT BOUNCE only (v1: add "BLOWOFF EXTENSION")')
+    ap.add_argument("--stop-atr", type=float, default=1.0,
+                    help="stop = swing high + this many ATRs (v1: 0.25)")
+    ap.add_argument("--min-rr", type=float, default=1.2, help="v1: 2.0")
+    ap.add_argument("--max-stop-dist", type=float, default=0.06, help="v1: 0.035")
+    ap.add_argument("--time-stop", type=int, default=7)
     args = ap.parse_args()
 
     universe = load_universe()
@@ -50,8 +58,10 @@ def main():
         df = prices.get(sym)
         if df is None:
             continue
-        sig = compute_signals(df)
-        all_trades += simulate_symbol(sym, df, sig, start)
+        sig = compute_signals(df, stop_atr=args.stop_atr, min_rr=args.min_rr,
+                              max_stop_dist=args.max_stop_dist,
+                              setups=tuple(args.setups))
+        all_trades += simulate_symbol(sym, df, sig, start, time_stop=args.time_stop)
 
     if not all_trades:
         print("No trades generated - nothing to report.")

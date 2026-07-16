@@ -85,11 +85,11 @@ system **shorts weakness that has bounced, never strength**.
 
 ### Setup labels
 
-| Setup | Definition |
-|---|---|
-| **DEAD-CAT BOUNCE** (primary) | Below the 200-DMA (bonus if falling): counter-trend rally in a weak stock |
-| **BLOWOFF EXTENSION** | z ≥ 2.25, or above upper band with RSI(2) ≥ 95: parabolic stretch |
-| OVERBOUGHT (weak ctx) | Passes gates but lacks context — filtered out of the trade plan |
+| Setup | Definition | Traded? |
+|---|---|---|
+| **DEAD-CAT BOUNCE** | Below the 200-DMA (bonus if falling): counter-trend rally in a weak stock | **Yes — the only traded setup** |
+| BLOWOFF EXTENSION | z ≥ 2.25, or above upper band with RSI(2) ≥ 95: parabolic stretch | No — backtested at PF 0.61; fading strength in India loses |
+| OVERBOUGHT (weak ctx) | Passes gates but lacks context | No |
 
 ### Composite score (0–100)
 
@@ -100,9 +100,9 @@ strong uptrend, **−4** near 52-week high.
 
 ### Trade-plan filters (`filters.py` — every rejection logged with a reason)
 
-score ≥ 50 · setup must be DEAD-CAT BOUNCE or BLOWOFF EXTENSION · **F&O
-only** (cash shorts are intraday-only in India) · **not in the day's NSE F&O
-ban list** (fetched live) · ADX ≤ 35 · reward:risk ≥ 2 · stop ≤ 3.5% away.
+score ≥ 50 · setup must be **DEAD-CAT BOUNCE** · **F&O only** (cash shorts
+are intraday-only in India) · **not in the day's NSE F&O ban list** (fetched
+live) · ADX ≤ 35 · reward:risk ≥ 1.2 at the entry trigger · stop ≤ 6% away.
 The daily cap (3 new trades) is applied **after sizing**, so a candidate
 rejected by the sizer frees its slot for the next-ranked name. Planning also
 reads the live state journal: symbols already open are skipped, and open
@@ -138,7 +138,7 @@ pass, then cancelled. (`at_open` sells at market instead.)
 
 **Exits**, placed automatically once the entry fills:
 - **NRML futures (default)**: a **server-side GTT OCO** — stop leg (BUY
-  trigger at swing-high + 0.25×ATR, limit with a 0.5% fill buffer) and
+  trigger at swing-high + 1.0×ATR, limit with a 0.5% fill buffer) and
   target leg (BUY LIMIT at the 20-EMA). The broker cancels the sibling leg
   when one triggers, so there is no client-side race window and exits
   survive your machine being off. `manage_positions.py` verifies a
@@ -178,6 +178,22 @@ Trade list, summary and equity curve land in `backtest_results/`.
 Honest caveats baked into the report: today's index membership and F&O list
 are applied to the past (survivorship bias), equity prices proxy futures,
 and there is no historical ban-list or earnings avoidance.
+
+### Backtest evidence behind the v2 rules (5y, F&O universe, costs incl.)
+
+Compare variants yourself with `scripts/compare_variants.py`:
+
+| Variant | Trades | Win% | Exp/trade | PF | Portfolio |
+|---|---|---|---|---|---|
+| v1: both setups, 0.25-ATR stop, R:R ≥ 2 | 204 | 30.4% | −0.48% | 0.72 | −30.3% |
+| DCB-only | 45 | 40.0% | +0.29% | 1.20 | −1.6% |
+| **v2 (live): DCB-only + 1.0-ATR stop, R:R ≥ 1.2** | **35** | **51.4%** | **+0.46%** | **1.25** | **+2.9%, max DD −2.6%** |
+| + Nifty<50-DMA regime filter | 4 | 0% | −4.62% | 0.00 | rejected — starves the signal |
+
+Read the v2 numbers soberly: ~7 trades/year and a profit factor of 1.25 is
+a *small* edge on a *thin* sample — statistically fragile, and survivorship
+bias flatters it. It is a validated improvement over v1, not a money
+printer. Paper-trade it.
 
 ## Products
 

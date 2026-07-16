@@ -41,7 +41,6 @@ BT_CACHE = os.path.join(DATA_DIR, "price_cache_backtest.pkl")
 COST_BPS_PER_SIDE = 5.0        # 0.05% of notional per side: fees + slippage
 ENTRY_BUFFER = 0.001           # trigger = day_low * (1 - 0.1%)
 ENTRY_LIMIT_SLIP = 0.0025      # limit = trigger * (1 - 0.25%)
-TIME_STOP_SESSIONS = 7
 
 
 # --------------------------------------------------------------------------
@@ -85,7 +84,29 @@ def download_history(symbols, years: int = 6, use_cache: bool = True) -> dict:
 
 
 # --------------------------------------------------------------------------
-def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
+def get_regime(years: int = 6, sma: int = 50) -> pd.Series:
+    """Date-indexed bool: True when the Nifty 50 closes BELOW its `sma`-day
+    average - the only tape worth shorting into. Soft-fails to all-True."""
+    import yfinance as yf
+
+    try:
+        start = (dt.date.today() - dt.timedelta(days=int(365.25 * years))).isoformat()
+        nifty = yf.download("^NSEI", start=start, auto_adjust=True, progress=False)
+        close = nifty["Close"]
+        if isinstance(close, pd.DataFrame):  # MultiIndex single-ticker frame
+            close = close.iloc[:, 0]
+        regime = close < close.rolling(sma).mean()
+        regime.index = regime.index.date
+        return regime
+    except Exception as e:
+        log.warning(f"regime download failed ({e}) - regime filter disabled")
+        return pd.Series(dtype=bool)
+
+
+# --------------------------------------------------------------------------
+def compute_signals(df: pd.DataFrame, stop_atr: float = 0.25,
+                    min_rr: float = 2.0, max_stop_dist: float = 0.035,
+                    setups=("DEAD-CAT BOUNCE", "BLOWOFF EXTENSION")) -> pd.DataFrame:
     """Per-day features + signal flag, mirroring scanner.evaluate() and the
     trade-plan filters exactly, vectorised over the whole history."""
     from .indicators import adx, atr, rsi
@@ -148,15 +169,15 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
 
     # trade-plan geometry, from signal-day values
     swing_high = high.rolling(5).max()
-    stop = np.maximum(swing_high, close) + 0.25 * atr14
+    stop = np.maximum(swing_high, close) + stop_atr * atr14
     target = ema20
     trigger = low * (1 - ENTRY_BUFFER)
     psr = stop - trigger
     rr = (trigger - target) / psr
 
     signal = (
-        gate & (score >= 50) & (setup != "WEAK") & (adx14 <= 35)
-        & (psr > 0) & (rr >= 2.0) & (psr / trigger <= 0.035)
+        gate & (score >= 50) & np.isin(setup, list(setups)) & (adx14 <= 35)
+        & (psr > 0) & (rr >= min_rr) & (psr / trigger <= max_stop_dist)
     )
 
     return pd.DataFrame({
@@ -168,7 +189,8 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
 
 # --------------------------------------------------------------------------
 def simulate_symbol(sym: str, df: pd.DataFrame, sig: pd.DataFrame,
-                    start: dt.date) -> list:
+                    start: dt.date, time_stop: int = 7,
+                    regime: "pd.Series | None" = None) -> list:
     """Walk one symbol's signals chronologically; one trade at a time."""
     o, h, l, c = (df[k].to_numpy() for k in ("Open", "High", "Low", "Close"))
     dates = df.index.date
@@ -179,6 +201,8 @@ def simulate_symbol(sym: str, df: pd.DataFrame, sig: pd.DataFrame,
     sig_idx = np.flatnonzero(sig["signal"].to_numpy())
     for t in sig_idx:
         if t <= busy_until or t + 1 >= n or dates[t] < start:
+            continue
+        if regime is not None and len(regime) and not regime.get(dates[t], False):
             continue
         trigger, limit = sig["trigger"].iloc[t], sig["limit"].iloc[t]
         stop, target = sig["stop"].iloc[t], sig["target"].iloc[t]
@@ -199,8 +223,8 @@ def simulate_symbol(sym: str, df: pd.DataFrame, sig: pd.DataFrame,
         # ---- exits ----
         exit_px = exit_reason = None
         exit_i = None
-        for i in range(e, min(e + TIME_STOP_SESSIONS + 1, n)):
-            if i - e >= TIME_STOP_SESSIONS:            # 7th session: close out
+        for i in range(e, min(e + time_stop + 1, n)):
+            if i - e >= time_stop:                     # final session: close out
                 exit_px, exit_reason, exit_i = o[i], "TIME_STOP", i
                 break
             hi = h[i] if i > e else max(h[i], entry_px)  # entry-day range
