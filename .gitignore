@@ -8,3 +8,4 @@ config/secrets.env
 config/.access_token
 logs/
 orders/
+data/price_cache_backtest.pkl

@@ -1,0 +1,29 @@
+BACKTEST  2021-07-16 -> 2026-07-16  (F&O universe, costs 0.05%/side)
+==============================================================================
+signals filled: 204 trades   win rate 30.4%   profit factor 0.72
+expectancy -0.476%/trade   avg R -0.194   avg win +4.04%   avg loss -2.45%   median hold 3d
+
+By setup:
+  BLOWOFF EXTENSION   159 trades  win  27.7%  exp -0.693%  PF  0.61  avgR -0.280
+  DEAD-CAT BOUNCE      45 trades  win  40.0%  exp +0.291%  PF   1.2  avgR +0.107
+
+By exit reason:
+  STOP          129 trades (63%)  avg -2.56%
+  TARGET         23 trades (11%)  avg +5.86%
+  TIME_STOP      52 trades (25%)  avg +1.88%
+
+By year (signal date):
+  2021    11 trades  win  27.3%  exp -0.506%  PF 0.71
+  2022    38 trades  win  42.1%  exp +0.096%  PF 1.07
+  2023    49 trades  win  18.4%  exp -1.182%  PF 0.39
+  2024    25 trades  win  16.0%  exp -1.722%  PF 0.25
+  2025    53 trades  win  37.7%  exp +0.222%  PF 1.15
+  2026    28 trades  win  35.7%  exp -0.212%  PF 0.85
+
+Portfolio simulation (Rs 50L, 0.75% risk/trade, max 5 open, 3/day, exposure caps):
+  trades taken: 183 of 204 signals
+  final equity: Rs 34,83,038  (-30.3% total, -7.0% CAGR over 5.0y)
+  max drawdown: -30.8%   best trade Rs 99,868   worst Rs -47,965
+
+Caveats: today's index membership & F&O list applied to the past (survivorship bias); equity prices proxy futures; no ban-list or earnings avoidance; fractional sizing (no lot rounding).
+trades -> /Users/manjunathb/Documents/FAB/mean_reversion/backtest_results/trades_5y_2026-07-16.csv

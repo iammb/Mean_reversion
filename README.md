@@ -161,6 +161,24 @@ are archived to `orders/trades_archive.json` — your trade journal.
 .venv/bin/python -m pytest tests/ -q
 ```
 
+## Backtest
+
+```bash
+.venv/bin/python scripts/run_backtest.py              # 5 years, F&O universe
+.venv/bin/python scripts/run_backtest.py --years 3
+.venv/bin/python scripts/run_backtest.py --all-stocks # include non-F&O names
+```
+
+Replays the exact scanner gates, trade-plan filters and entry/exit mechanics
+over history: SL-SELL entry below the signal-day low (gap-aware fills, order
+expires if the bounce never fails), stop/target/7-session time stop, 0.05%
+per side costs, plus a portfolio simulation honouring the live risk limits.
+Trade list, summary and equity curve land in `backtest_results/`.
+
+Honest caveats baked into the report: today's index membership and F&O list
+are applied to the past (survivorship bias), equity prices proxy futures,
+and there is no historical ban-list or earnings avoidance.
+
 ## Products
 
 | `entry.product` | Instrument | Holding | Notes |
