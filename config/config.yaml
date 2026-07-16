@@ -1,0 +1,49 @@
+# ---------------------------------------------------------------------------
+# Nifty 500 short-side mean reversion - strategy & execution configuration
+# EDIT capital + risk numbers to match your account before going live.
+# ---------------------------------------------------------------------------
+
+capital: 1000000              # trading capital in Rs (10 lakh)
+
+risk:
+  risk_per_trade_pct: 0.75    # % of capital risked between entry and stop
+  lot_risk_tolerance: 1.5     # futures: allow 1 lot even if risk <= 1.5x budget
+  max_positions: 5            # max concurrent open shorts
+  max_new_trades_per_day: 3   # throttle fresh entries
+  max_exposure_per_trade_pct: 25   # notional cap per trade, % of capital
+  max_total_exposure_pct: 60  # total short notional cap, % of capital
+  max_daily_loss_pct: 2.0     # kill switch: no new entries past this realised loss
+  min_reward_risk: 2.0        # skip candidates with worse than 2:1
+  max_stop_distance_pct: 3.5  # skip if stop is further than this from entry
+
+filters:
+  min_score: 50               # composite scanner score floor
+  allowed_setups:             # setup types worth trading
+    - "DEAD-CAT BOUNCE"
+    - "BLOWOFF EXTENSION"
+  fno_only: true              # only F&O names (shortable overnight)
+  max_adx: 35                 # never fade a freight train
+  exclude_ban_list: true      # drop names in the NSE F&O ban list
+
+entry:
+  mode: breakdown             # breakdown = SL sell below scan-day low (confirmation)
+                              # at_open  = sell at next open (aggressive)
+  breakdown_buffer_pct: 0.10  # trigger = scan-day low * (1 - 0.10%)
+  limit_slippage_pct: 0.25    # SL order limit price this far below trigger
+  product: NRML_FUT           # NRML_FUT = short current-month futures (multi-day)
+                              # MIS_EQ   = intraday cash short (auto square-off)
+  entry_valid_sessions: 1     # cancel unfilled entry orders after N sessions
+
+exits:
+  stop_order_type: SL-M       # stop-loss market once trigger hits
+  target_order_type: LIMIT    # take profit at the 20-EMA from the scan
+  time_stop_sessions: 7       # close at market after 7 sessions, thesis expired
+  mis_squareoff_time: "15:10" # square off MIS shorts before broker auto-squareoff
+
+kite:
+  api_key_env: KITE_API_KEY         # set in config/secrets.env
+  api_secret_env: KITE_API_SECRET
+  access_token_file: config/.access_token
+  order_tag: mrshort                # tag on every order this system places
+
+dry_run: true                 # scripts only print/journal orders unless --live

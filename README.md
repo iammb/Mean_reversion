@@ -1,86 +1,164 @@
-# Nifty 500 Short-Side Mean Reversion Scanner
+# Nifty 500 Short-Side Mean Reversion — Scanner + Zerodha Kite Execution
 
-Scans all Nifty 500 stocks for short-term overbought extremes that are
-statistically likely to revert back down toward their 20-day mean, and ranks
-them as short candidates.
+Scans all Nifty 500 stocks for short-term overbought extremes likely to
+revert toward their 20-day mean, filters them into a risk-managed trade
+plan, and executes/manages the shorts through Zerodha Kite Connect.
 
-## Strategy: "Fade the Exhausted Bounce"
+**Everything runs DRY-RUN by default.** No order touches the broker without
+the `--live` flag, your own API keys, and a fresh daily access token.
 
-Mean reversion on the short side works differently in India than in most
-markets: Indian equities carry a persistent upward drift (SIP/retail flows),
-so blindly shorting strength gets run over. This scanner therefore favours
-**shorting weakness that has bounced**, and penalises strength.
+---
 
-### Setup types
+## Project structure
 
-| Setup | Definition | Character |
-|---|---|---|
-| **DEAD-CAT BOUNCE** (primary) | Stock **below its 200-DMA** (bonus if the 200-DMA is falling) that has rallied hard into short-term overbought | Highest-probability short: counter-trend rally in a weak stock, reverting with the larger trend |
-| **BLOWOFF EXTENSION** | Stock stretched to a statistical extreme above its 20-day mean (z-score ≥ 2.25, or above the upper Bollinger with RSI(2) ≥ 95) | Pure reversion trade against a parabolic move; needs stricter thresholds |
-| **OVERBOUGHT (weak ctx)** | Passes the gate but lacks either context | Lower conviction; trade smaller or skip |
+```
+mean_reversion/
+├── config/
+│   ├── config.yaml            # capital, risk limits, filters, entry/exit rules
+│   ├── secrets.env.example    # template for Kite API keys (copy to secrets.env)
+│   └── .access_token          # daily Kite token (auto-created, gitignored)
+├── data/                      # Nifty 500 list, F&O lot sizes, price cache
+├── scan_results/              # dated scanner output CSVs
+├── orders/                    # trade plans + positions_state.json (gitignored)
+├── logs/                      # dated run logs (gitignored)
+├── src/mr_short/
+│   ├── indicators.py          # RSI / ATR / ADX / streaks (plain pandas)
+│   ├── universe.py            # constituents, lot sizes, ban list, price data
+│   ├── scanner.py             # the strategy: gates, scoring, setup labels
+│   ├── filters.py             # scan CSV -> tradeable shortlist (with reasons)
+│   ├── risk.py                # position sizing + portfolio guardrails
+│   └── kite/
+│       ├── auth.py            # daily login / session
+│       ├── instruments.py     # equity + nearest-expiry futures resolution
+│       └── orders.py          # entry, stop/target OCO, square-off (dry-run aware)
+└── scripts/                   # the daily workflow, in order:
+    ├── run_scan.py            #   1. post-close: scan -> candidates CSV
+    ├── plan_trades.py         #   2. evening: filter + size -> trade plan JSON
+    ├── kite_login.py          #   3. morning: mint today's access token
+    ├── place_entries.py       #   4. at open: place entry orders
+    └── manage_positions.py    #   5. intraday/daily: fills, OCO exits, time stop
+```
 
-### Eligibility gate (all must hold)
+## Setup
 
-- ≥ 220 daily bars of history, close ≥ ₹50
-- 20-day average daily turnover ≥ ₹10 crore (`--min-turnover` to change)
-- **RSI(2) ≥ 85** — the stock must be genuinely short-term overbought
-- At least **2 of 4** confirmations: %B ≥ 1.0 (close above upper Bollinger
-  20,2) · 20-day z-score ≥ 2 · RSI(14) ≥ 65 · ATR-stretch ≥ 2
-  (close is ≥ 2 ATRs above the 20-EMA)
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
+# for live trading only:
+cp config/secrets.env.example config/secrets.env   # add your Kite Connect keys
+```
+
+## Daily workflow
+
+```bash
+# 1. after market close - scan the universe
+.venv/bin/python scripts/run_scan.py
+
+# 2. build the trade plan (filters + position sizing)
+.venv/bin/python scripts/plan_trades.py
+
+# 3. next morning (live only) - mint today's Kite access token
+.venv/bin/python scripts/kite_login.py
+
+# 4. place entries (dry run prints orders; --live sends them)
+.venv/bin/python scripts/place_entries.py           # dry run
+.venv/bin/python scripts/place_entries.py --live    # real orders
+
+# 5. run every few minutes while market is open (cron/loop)
+.venv/bin/python scripts/manage_positions.py --live
+```
+
+---
+
+## The strategy: "Fade the Exhausted Bounce"
+
+Indian equities carry persistent upward drift (SIP/retail flows), so the
+system **shorts weakness that has bounced, never strength**.
+
+### Scanner gates (all must hold)
+
+- ≥ 220 daily bars, close ≥ ₹50, 20-day avg turnover ≥ ₹10 crore
+- **RSI(2) ≥ 85** plus at least **2 of 4**: close above upper Bollinger
+  (20,2) · 20-day z-score ≥ 2 · RSI(14) ≥ 65 · ≥ 2 ATRs above the 20-EMA
+
+### Setup labels
+
+| Setup | Definition |
+|---|---|
+| **DEAD-CAT BOUNCE** (primary) | Below the 200-DMA (bonus if falling): counter-trend rally in a weak stock |
+| **BLOWOFF EXTENSION** | z ≥ 2.25, or above upper band with RSI(2) ≥ 95: parabolic stretch |
+| OVERBOUGHT (weak ctx) | Passes gates but lacks context — filtered out of the trade plan |
 
 ### Composite score (0–100)
 
-Points for: RSI(2) ≥ 90/97 · RSI(14) ≥ 65/72 · close above upper Bollinger ·
-z-score ≥ 2/2.5 · ATR-stretch ≥ 2/3 · 3+/5+ consecutive up days · 5-day rally
-≥ 8%/15% · volume climax (≥ 2× 20-day avg volume on an up day).
+Points for RSI(2)/RSI(14) extremes, upper-band close, z-score, ATR stretch,
+3+/5+ up days, 5-day rally ≥ 8%/15%, volume climax. **+15** max for weak
+long-term trend. Penalties: **−12** ADX ≥ 35 with +DI dominant, **−8**
+strong uptrend, **−4** near 52-week high.
 
-Context: **+10** below 200-DMA, **+5** falling 200-DMA.
-Penalties (don't fade freight trains): **−12** if ADX(14) ≥ 35 with +DI > −DI,
-**−8** if in a strong uptrend (above rising 200-DMA and above 50-DMA),
-**−4** within 2% of the 52-week high (breakout/squeeze risk).
+### Trade-plan filters (`filters.py` — every rejection logged with a reason)
 
-### Trade plan (emitted per candidate)
+score ≥ 50 · setup must be DEAD-CAT BOUNCE or BLOWOFF EXTENSION · **F&O
+only** (cash shorts are intraday-only in India) · **not in the day's NSE F&O
+ban list** (fetched live) · ADX ≤ 35 · reward:risk ≥ 2 · stop ≤ 3.5% away ·
+top 3 by score per day.
 
-- **Entry**: at scan-day close, or (safer) next day only on a break below the
-  scan-day low — confirmation that the bounce is failing.
-- **Stop**: 5-day swing high + 0.25 × ATR(14).
-- **Target**: the 20-EMA (that *is* the mean being reverted to).
-- **Time stop**: exit after 7 sessions regardless — if reversion hasn't
-  happened in a week, the thesis is wrong.
-- Size so a stop-out costs ≤ 0.5–1% of capital. Reward:risk is printed;
-  prefer ≥ 2.
+---
 
-## India-specific rules baked in
+## Risk management (`risk.py`)
 
-1. **Cash-market shorts are intraday-only** (SEBI). To hold a short
-   overnight you need the stock in the F&O segment (short futures or buy
-   puts). The `fno` column flags this; `--fno-only` filters to those.
-2. **Check the F&O ban list** for the day before trading a flagged name.
-3. **Skip earnings**: don't short within 2 sessions of a results date
-   (not automated — check before entering).
-4. Liquidity/price gates avoid circuit-prone smallcaps where borrows and
-   fills don't exist.
+| Guardrail | Default | Meaning |
+|---|---|---|
+| `risk_per_trade_pct` | 0.75% | Capital at risk between entry and stop |
+| Sizing basis | breakdown trigger | Size uses the **actual fill price** (trigger below scan-day low), not the scan close — and re-checks R:R there, killing trades whose target is too close to the trigger |
+| `lot_risk_tolerance` | 1.5× | Futures: 1 lot allowed only if its risk ≤ 1.5× budget, else skip |
+| `max_exposure_per_trade_pct` | 25% | Notional cap per trade |
+| `max_total_exposure_pct` | 60% | Total short notional cap |
+| `max_positions` / `max_new_trades_per_day` | 5 / 3 | Concurrency throttles |
+| `max_daily_loss_pct` | 2% | **Kill switch**: no new entries past this realised day loss |
+| Margin check | live only | `order_margins` vs available balance before every entry; blocks if unsure |
 
-## Usage
+With ₹10L capital the sizer will (correctly) skip most stock futures — one
+lot's risk breaches the budget. Either raise capital, or set
+`entry.product: MIS_EQ` for share-level intraday sizing.
 
-```bash
-.venv/bin/python scanner.py                # full scan, top 20
-.venv/bin/python scanner.py --top 40       # more rows
-.venv/bin/python scanner.py --fno-only     # only overnight-shortable names
-.venv/bin/python scanner.py --min-turnover 25   # stricter liquidity
-.venv/bin/python scanner.py --cache        # reuse today's downloaded prices
-```
+## Entry & exit rules (`config.yaml`)
 
-Output: ranked table + full CSV in `scan_results/short_candidates_<date>.csv`.
+**Entry** (`breakdown`, default): SL SELL with trigger 0.10% below the
+scan-day low, limit 0.25% below trigger. The short only triggers if the
+bounce actually fails — no fill, no trade; unfilled entries are cancelled
+after 1 session. (`at_open` sells at market instead.)
 
-Data: Yahoo Finance daily OHLCV (`yfinance`, auto-adjusted). Universe:
-`data/nifty500_constituents.csv` (NSE archives). F&O list:
-`data/fo_mktlots.csv` (NSE archives) — refresh both monthly:
+**Exits**, placed automatically once the entry fills, re-armed each morning:
+- **Stop**: SL-M BUY at swing-high + 0.25×ATR (from the scan)
+- **Target**: LIMIT BUY at the 20-EMA — the mean being reverted to
+- **OCO**: whichever fills first, the sibling is cancelled
+- **Time stop**: market close-out after 7 sessions — thesis expired
+- **MIS**: forced square-off by 15:10 (before the broker's auto-squareoff)
+
+State machine per trade in `orders/positions_state.json`:
+`PENDING_ENTRY → OPEN → CLOSED` (exit_reason: STOP / TARGET / TIME_STOP /
+EOD_SQUAREOFF), or `CANCELLED` if the entry never triggers.
+
+## Products
+
+| `entry.product` | Instrument | Holding | Notes |
+|---|---|---|---|
+| `NRML_FUT` (default) | Nearest-expiry stock future (NFO) | Multi-day, fits the 7-session time stop | Auto-rolls to next month if ≤ 2 days to expiry; lot-size aware |
+| `MIS_EQ` | Cash equity intraday | Same day only | For smaller accounts; SEBI bars overnight cash shorts |
+
+## Data refresh (monthly)
 
 ```bash
 curl -s -A "Mozilla/5.0" "https://archives.nseindia.com/content/indices/ind_nifty500list.csv" -o data/nifty500_constituents.csv
 curl -s -A "Mozilla/5.0" "https://nsearchives.nseindia.com/content/fo/fo_mktlots.csv" -o data/fo_mktlots.csv
 ```
 
-*Not investment advice. Shorting carries unlimited-loss risk; backtest and
-paper-trade before deploying capital.*
+The F&O **ban list** is fetched live on every plan run. Skip names with
+results due in the next 2 sessions — earnings gaps ignore mean reversion
+(check manually; not automated).
+
+---
+
+*Not investment advice. Shorting carries unlimited-loss risk. Backtest and
+paper-trade (dry-run mode) before pointing this at a funded account.*

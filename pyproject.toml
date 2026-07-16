@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mr-short"
+version = "0.1.0"
+description = "Nifty 500 short-side mean reversion: scanner + Zerodha Kite execution"
+requires-python = ">=3.9"
+dependencies = [
+    "pandas",
+    "numpy",
+    "yfinance",
+    "requests",
+    "kiteconnect",
+    "PyYAML",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

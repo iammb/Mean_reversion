@@ -1,5 +1,10 @@
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
 data/price_cache.pkl
 .DS_Store
+config/secrets.env
+config/.access_token
+logs/
+orders/
