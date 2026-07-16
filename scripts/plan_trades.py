@@ -17,7 +17,8 @@ import pandas as pd
 
 from mr_short.filters import select_candidates
 from mr_short.risk import apply_portfolio_limits, size_trade
-from mr_short.utils import ORDERS_DIR, SCAN_DIR, get_logger, inr, latest_file, load_config
+from mr_short.utils import (ORDERS_DIR, SCAN_DIR, get_logger, inr, latest_file,
+                            load_config, load_state)
 
 log = get_logger("plan_trades")
 
@@ -26,6 +27,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--scan-file", help="specific scan CSV (default: newest)")
     ap.add_argument("--capital", type=float, help="override config capital")
+    ap.add_argument("--allow-stale", action="store_true",
+                    help="plan from a scan CSV that is not from today")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -33,8 +36,21 @@ def main():
         cfg["capital"] = args.capital
 
     scan_path = args.scan_file or latest_file(os.path.join(SCAN_DIR, "short_candidates_*.csv"))
+    today = dt.date.today().isoformat()
+    if today not in os.path.basename(scan_path) and not args.allow_stale:
+        raise SystemExit(f"newest scan is {os.path.basename(scan_path)}, not today's - "
+                         f"run scripts/run_scan.py first (or pass --allow-stale)")
     scan = pd.read_csv(scan_path).fillna({"fno": "", "lot_size": 0})
     log.info(f"scan file: {scan_path} ({len(scan)} candidates)")
+
+    # what is already on the book counts against every limit
+    live_trades = [t for t in load_state()["trades"]
+                   if t["status"] in ("PENDING_ENTRY", "OPEN")]
+    open_syms = {t["symbol"] for t in live_trades}
+    open_notional = sum(t["qty"] * t["entry"] for t in live_trades)
+    if live_trades:
+        log.info(f"already on book: {sorted(open_syms)} "
+                 f"(notional {inr(open_notional)})")
 
     selected, rejections = select_candidates(scan, cfg)
     for sym, why in rejections:
@@ -46,6 +62,9 @@ def main():
 
     sized, skips = [], []
     for _, row in selected.iterrows():
+        if row["symbol"] in open_syms:
+            skips.append((row["symbol"], "already open/pending from earlier plan"))
+            continue
         trade, why = size_trade(row, cfg)
         if trade is None:
             skips.append((row["symbol"], why))
@@ -56,7 +75,10 @@ def main():
             trade_dict["setup"] = row["setup"]
             sized.append((trade, trade_dict))
 
-    kept, limit_skips = apply_portfolio_limits([t for t, _ in sized], cfg)
+    kept, limit_skips = apply_portfolio_limits(
+        [t for t, _ in sized], cfg,
+        open_positions=len(live_trades), open_notional=open_notional,
+    )
     kept_syms = {t.symbol for t in kept}
     plan_trades = [d for t, d in sized if t.symbol in kept_syms]
     skips += limit_skips

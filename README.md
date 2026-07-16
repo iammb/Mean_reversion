@@ -4,8 +4,9 @@ Scans all Nifty 500 stocks for short-term overbought extremes likely to
 revert toward their 20-day mean, filters them into a risk-managed trade
 plan, and executes/manages the shorts through Zerodha Kite Connect.
 
-**Everything runs DRY-RUN by default.** No order touches the broker without
-the `--live` flag, your own API keys, and a fresh daily access token.
+**Everything runs DRY-RUN by default.** Going live requires a double
+interlock — the `--live` flag AND `dry_run: false` in config.yaml — plus
+your own API keys and a fresh daily access token.
 
 ---
 
@@ -31,12 +32,13 @@ mean_reversion/
 │       ├── auth.py            # daily login / session
 │       ├── instruments.py     # equity + nearest-expiry futures resolution
 │       └── orders.py          # entry, stop/target OCO, square-off (dry-run aware)
-└── scripts/                   # the daily workflow, in order:
-    ├── run_scan.py            #   1. post-close: scan -> candidates CSV
-    ├── plan_trades.py         #   2. evening: filter + size -> trade plan JSON
-    ├── kite_login.py          #   3. morning: mint today's access token
-    ├── place_entries.py       #   4. at open: place entry orders
-    └── manage_positions.py    #   5. intraday/daily: fills, OCO exits, time stop
+├── scripts/                   # the daily workflow, in order:
+│   ├── run_scan.py            #   1. post-close: scan -> candidates CSV
+│   ├── plan_trades.py         #   2. evening: filter + size -> trade plan JSON
+│   ├── kite_login.py          #   3. morning: mint today's access token
+│   ├── place_entries.py       #   4. at open: place entry orders
+│   └── manage_positions.py    #   5. intraday/daily: fills, exits, time stop
+└── tests/                     # pytest suite: indicators, sizing, filters
 ```
 
 ## Setup
@@ -100,8 +102,12 @@ strong uptrend, **−4** near 52-week high.
 
 score ≥ 50 · setup must be DEAD-CAT BOUNCE or BLOWOFF EXTENSION · **F&O
 only** (cash shorts are intraday-only in India) · **not in the day's NSE F&O
-ban list** (fetched live) · ADX ≤ 35 · reward:risk ≥ 2 · stop ≤ 3.5% away ·
-top 3 by score per day.
+ban list** (fetched live) · ADX ≤ 35 · reward:risk ≥ 2 · stop ≤ 3.5% away.
+The daily cap (3 new trades) is applied **after sizing**, so a candidate
+rejected by the sizer frees its slot for the next-ranked name. Planning also
+reads the live state journal: symbols already open are skipped, and open
+positions count against `max_positions` and the total-exposure cap. Plans
+refuse to build from a stale scan CSV (override with `--allow-stale`).
 
 ---
 
@@ -126,19 +132,34 @@ lot's risk breaches the budget. Either raise capital, or set
 
 **Entry** (`breakdown`, default): SL SELL with trigger 0.10% below the
 scan-day low, limit 0.25% below trigger. The short only triggers if the
-bounce actually fails — no fill, no trade; unfilled entries are cancelled
-after 1 session. (`at_open` sells at market instead.)
+bounce actually fails — no fill, no trade. Entry orders are DAY validity
+and are re-armed each morning until `entry_valid_sessions` weekday sessions
+pass, then cancelled. (`at_open` sells at market instead.)
 
-**Exits**, placed automatically once the entry fills, re-armed each morning:
-- **Stop**: SL-M BUY at swing-high + 0.25×ATR (from the scan)
-- **Target**: LIMIT BUY at the 20-EMA — the mean being reverted to
-- **OCO**: whichever fills first, the sibling is cancelled
-- **Time stop**: market close-out after 7 sessions — thesis expired
-- **MIS**: forced square-off by 15:10 (before the broker's auto-squareoff)
+**Exits**, placed automatically once the entry fills:
+- **NRML futures (default)**: a **server-side GTT OCO** — stop leg (BUY
+  trigger at swing-high + 0.25×ATR, limit with a 0.5% fill buffer) and
+  target leg (BUY LIMIT at the 20-EMA). The broker cancels the sibling leg
+  when one triggers, so there is no client-side race window and exits
+  survive your machine being off. `manage_positions.py` verifies a
+  triggered GTT actually flattened the position and falls back to a
+  regular exit pair (loudly) if the limit leg didn't fill.
+- **MIS equity**: regular SL-M stop + LIMIT target pair with client-side
+  OCO — run the manager every few minutes intraday. Forced square-off by
+  15:10.
+- **Time stop**: market close-out after 7 weekday sessions — thesis
+  expired. Session counters only advance on weekdays.
 
 State machine per trade in `orders/positions_state.json`:
 `PENDING_ENTRY → OPEN → CLOSED` (exit_reason: STOP / TARGET / TIME_STOP /
-EOD_SQUAREOFF), or `CANCELLED` if the entry never triggers.
+EOD_SQUAREOFF), or `CANCELLED` if the entry never triggers. Finished trades
+are archived to `orders/trades_archive.json` — your trade journal.
+
+## Tests
+
+```bash
+.venv/bin/python -m pytest tests/ -q
+```
 
 ## Products
 

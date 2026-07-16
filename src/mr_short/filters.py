@@ -41,11 +41,10 @@ def select_candidates(scan: pd.DataFrame, cfg: dict):
         else:
             keep.append(row)
 
+    # return ALL passing candidates, best first - sizing may reject some, so
+    # the daily trade cap is applied after sizing (in apply_portfolio_limits),
+    # letting lower-ranked names fill slots that sizing rejections free up
     selected = pd.DataFrame(keep)
     if not selected.empty:
-        selected = (
-            selected.sort_values("score", ascending=False)
-            .head(r["max_new_trades_per_day"])
-            .reset_index(drop=True)
-        )
+        selected = selected.sort_values("score", ascending=False).reset_index(drop=True)
     return selected, rejections

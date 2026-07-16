@@ -94,16 +94,19 @@ def size_trade(row, cfg: dict) -> tuple:
 
 def apply_portfolio_limits(sized: list, cfg: dict, open_positions: int = 0,
                            open_notional: float = 0.0) -> tuple:
-    """Enforce max positions and total exposure across the batch. Returns (kept, skipped)."""
+    """Enforce max positions, daily trade cap and total exposure across the
+    batch, on top of what is already open. Returns (kept, skipped)."""
     r = cfg["risk"]
     capital = cfg["capital"]
     max_total = capital * r["max_total_exposure_pct"] / 100.0
     slots = max(0, r["max_positions"] - open_positions)
+    slots = min(slots, r["max_new_trades_per_day"])
     running = open_notional
     kept, skipped = [], []
     for t in sized:
         if len(kept) >= slots:
-            skipped.append((t.symbol, f"max_positions {r['max_positions']} reached"))
+            skipped.append((t.symbol, f"position/daily-trade limit reached "
+                                      f"({open_positions} already open)"))
         elif running + t.notional > max_total:
             skipped.append((t.symbol, f"total exposure would exceed "
                                       f"{r['max_total_exposure_pct']}% of capital"))
@@ -114,7 +117,8 @@ def apply_portfolio_limits(sized: list, cfg: dict, open_positions: int = 0,
 
 
 def daily_loss_breached(kite, cfg: dict) -> bool:
-    """Kill switch: realised loss today worse than max_daily_loss_pct (live only)."""
+    """Kill switch: day P&L (realised + mark-to-market, as Kite reports it)
+    worse than max_daily_loss_pct. Checked before every entry batch (live only)."""
     if kite is None:
         return False
     try:

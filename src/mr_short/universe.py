@@ -85,6 +85,14 @@ def download_prices(symbols, use_cache: bool = False) -> dict:
             batch, start=start, group_by="ticker", auto_adjust=True,
             threads=True, progress=False,
         )
+        if raw is None or raw.empty:
+            continue
+        if not isinstance(raw.columns, pd.MultiIndex):
+            # single surviving ticker: yfinance returns a flat frame
+            df = raw.dropna(how="all")
+            if len(df) >= MIN_BARS:
+                frames[batch[0].replace(".NS", "")] = df
+            continue
         for t in batch:
             try:
                 df = raw[t].dropna(how="all")

@@ -1,8 +1,9 @@
-"""Order engine: entries, exit pairs (stop + target), OCO handling, square-off.
+"""Order engine: entries, exits (GTT OCO or regular pair), square-off.
 
 Every method works in two modes:
   dry_run=True  (default) - logs exactly what WOULD be placed, returns fake
-                            order ids "DRY-n". Nothing touches the broker.
+                            order ids "DRY-n" / "DRYGTT-n". Nothing touches
+                            the broker.
   dry_run=False (--live)  - places real orders via Kite Connect.
 
 Entry (short):
@@ -10,11 +11,15 @@ Entry (short):
                    lower. Fills only if the bounce actually fails.
   at_open mode   - MARKET SELL at next open.
 
-Exits after fill (OCO pair, managed by manage_positions.py):
-  stop   - SL-M BUY above the swing high (from the scan's stop level)
-  target - LIMIT BUY at the 20-EMA
-  When one leg fills the sibling is cancelled. A time stop closes the
-  position at market after `time_stop_sessions` sessions.
+Exits after fill:
+  NRML futures (default) - a server-side GTT OCO: stop leg above, target leg
+    below; the broker cancels the sibling when one triggers. Survives this
+    machine being off and has no client-side race window. GTT legs fire
+    LIMIT orders, so the stop leg's limit carries a fill buffer above its
+    trigger; manage_positions verifies the position actually closed.
+  MIS equity - regular SL-M stop + LIMIT target pair, OCO enforced by
+    manage_positions (run it every few minutes intraday).
+  A time stop closes any position at market after `time_stop_sessions`.
 """
 
 import itertools
@@ -92,6 +97,92 @@ class OrderEngine:
             price=_round_tick(target), validity="DAY",
         )
         return sl_id, tgt_id
+
+    # ------------------------------------------------------------------
+    # GTT OCO exits (NRML): broker-side, one leg cancels the other
+    # ------------------------------------------------------------------
+    def place_gtt_oco(self, inst: Instrument, qty: int, stop: float,
+                      target: float, last_price: float) -> str:
+        """Two-leg GTT for an open short: leg 0 = target (below), leg 1 = stop
+        (above). Returns the GTT trigger id."""
+        buffer_pct = self.cfg["exits"].get("gtt_stop_limit_buffer_pct", 0.5)
+        tgt_px = _round_tick(target)
+        stop_trig = _round_tick(stop)
+        stop_limit = _round_tick(stop * (1 + buffer_pct / 100.0))  # BUY limit above trigger -> fills
+        desc = (f"GTT-OCO {inst.tradingsymbol} x{qty}: target BUY {tgt_px} / "
+                f"stop BUY trig {stop_trig} lim {stop_limit}")
+        if self.dry_run:
+            gid = f"DRYGTT-{next(_dry_counter)}"
+            log.info(f"[DRY RUN] {desc}")
+            return gid
+        legs = [
+            {"transaction_type": "BUY", "quantity": qty, "product": "NRML",
+             "order_type": "LIMIT", "price": tgt_px},
+            {"transaction_type": "BUY", "quantity": qty, "product": "NRML",
+             "order_type": "LIMIT", "price": stop_limit},
+        ]
+        result = self.kite.place_gtt(
+            trigger_type=self.kite.GTT_TYPE_OCO,
+            tradingsymbol=inst.tradingsymbol, exchange=inst.exchange,
+            trigger_values=[tgt_px, stop_trig], last_price=last_price,
+            orders=legs,
+        )
+        gid = str(result["trigger_id"])
+        log.info(f"[LIVE] {desc} -> gtt_id {gid}")
+        return gid
+
+    def gtt_status(self, gtt_id: str) -> str:
+        """active | triggered | cancelled | deleted | disabled | expired | rejected."""
+        if self.dry_run or str(gtt_id).startswith("DRYGTT-"):
+            return "active"
+        try:
+            return self.kite.get_gtt(int(gtt_id))["status"]
+        except Exception as e:
+            log.warning(f"gtt_status({gtt_id}): {e}")
+            return "UNKNOWN"
+
+    def gtt_triggered_leg(self, gtt_id: str) -> str:
+        """Which leg fired on a triggered GTT: TARGET (leg 0) or STOP (leg 1)."""
+        if self.dry_run or str(gtt_id).startswith("DRYGTT-"):
+            return "TARGET"
+        try:
+            g = self.kite.get_gtt(int(gtt_id))
+            for idx, leg in enumerate(g.get("orders", [])):
+                if leg.get("result"):
+                    return "TARGET" if idx == 0 else "STOP"
+        except Exception as e:
+            log.warning(f"gtt_triggered_leg({gtt_id}): {e}")
+        return "GTT_TRIGGERED"
+
+    def delete_gtt(self, gtt_id: str, why: str):
+        if self.dry_run or str(gtt_id).startswith("DRYGTT-"):
+            log.info(f"[DRY RUN] DELETE GTT {gtt_id} ({why})")
+            return
+        self.kite.delete_gtt(int(gtt_id))
+        log.info(f"[LIVE] DELETE GTT {gtt_id} ({why})")
+
+    # ------------------------------------------------------------------
+    def ltp(self, inst: Instrument, fallback: float) -> float:
+        if self.dry_run:
+            return fallback
+        try:
+            key = f"{inst.exchange}:{inst.tradingsymbol}"
+            return self.kite.ltp([key])[key]["last_price"]
+        except Exception as e:
+            log.warning(f"ltp({inst.tradingsymbol}): {e} - using fallback {fallback}")
+            return fallback
+
+    def net_position_qty(self, inst: Instrument) -> int:
+        """Net quantity for this instrument (negative = short). Dry run: 0 (flat)."""
+        if self.dry_run:
+            return 0
+        try:
+            for p in self.kite.positions()["net"]:
+                if p["tradingsymbol"] == inst.tradingsymbol and p["exchange"] == inst.exchange:
+                    return int(p["quantity"])
+        except Exception as e:
+            log.warning(f"net_position_qty({inst.tradingsymbol}): {e}")
+        return 0
 
     # ------------------------------------------------------------------
     def close_at_market(self, inst: Instrument, qty: int, reason: str) -> str:

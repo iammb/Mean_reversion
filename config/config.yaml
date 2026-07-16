@@ -12,7 +12,8 @@ risk:
   max_new_trades_per_day: 3   # throttle fresh entries
   max_exposure_per_trade_pct: 25   # notional cap per trade, % of capital
   max_total_exposure_pct: 60  # total short notional cap, % of capital
-  max_daily_loss_pct: 2.0     # kill switch: no new entries past this realised loss
+  max_daily_loss_pct: 2.0     # kill switch: no new entries once the day P&L
+                              # (realised + M2M, as Kite reports it) is past this
   min_reward_risk: 2.0        # skip candidates with worse than 2:1
   max_stop_distance_pct: 3.5  # skip if stop is further than this from entry
 
@@ -32,11 +33,15 @@ entry:
   limit_slippage_pct: 0.25    # SL order limit price this far below trigger
   product: NRML_FUT           # NRML_FUT = short current-month futures (multi-day)
                               # MIS_EQ   = intraday cash short (auto square-off)
-  entry_valid_sessions: 1     # cancel unfilled entry orders after N sessions
+  entry_valid_sessions: 1     # entry orders are DAY validity; they are re-armed
+                              # each morning until this many sessions have passed
 
 exits:
-  stop_order_type: SL-M       # stop-loss market once trigger hits
-  target_order_type: LIMIT    # take profit at the 20-EMA from the scan
+  use_gtt: true               # NRML: server-side GTT OCO exits (one leg cancels
+                              # the other at the broker; survives this machine
+                              # being off). MIS always uses the regular pair.
+  gtt_stop_limit_buffer_pct: 0.5  # stop leg fires a BUY LIMIT this far above its
+                              # trigger so it fills like a market order
   time_stop_sessions: 7       # close at market after 7 sessions, thesis expired
   mis_squareoff_time: "15:10" # square off MIS shorts before broker auto-squareoff
 
@@ -46,4 +51,5 @@ kite:
   access_token_file: config/.access_token
   order_tag: mrshort                # tag on every order this system places
 
-dry_run: true                 # scripts only print/journal orders unless --live
+dry_run: true                 # SAFETY INTERLOCK: going live requires BOTH this
+                              # set to false AND the --live flag on the script

@@ -31,6 +31,10 @@ def main():
 
     kite = None
     if args.live:
+        # double interlock: --live AND config dry_run: false
+        if cfg.get("dry_run", True):
+            raise SystemExit("--live passed but config.yaml still has dry_run: true. "
+                             "Flip it to false to confirm you mean it.")
         from mr_short.kite.auth import get_kite
         kite = get_kite(cfg)
 
@@ -66,10 +70,12 @@ def main():
             "entry": t["entry"],
             "stop": t["stop"],
             "target": t["target"],
+            "scan_day_low": t["scan_day_low"],
             "risk_amount": t["risk_amount"],
             "entry_order_id": entry_id,
             "sl_order_id": None,
             "target_order_id": None,
+            "gtt_id": None,
             "status": "PENDING_ENTRY",
             "entry_date": dt.date.today().isoformat(),
             "sessions_held": 0,

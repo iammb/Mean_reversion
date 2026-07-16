@@ -16,6 +16,7 @@ LOGS_DIR = os.path.join(ROOT, "logs")
 CONFIG_PATH = os.path.join(ROOT, "config", "config.yaml")
 SECRETS_PATH = os.path.join(ROOT, "config", "secrets.env")
 STATE_PATH = os.path.join(ORDERS_DIR, "positions_state.json")
+ARCHIVE_PATH = os.path.join(ORDERS_DIR, "trades_archive.json")
 
 
 def load_config(path: str = CONFIG_PATH) -> dict:
@@ -74,6 +75,40 @@ def save_state(state: dict):
     os.makedirs(ORDERS_DIR, exist_ok=True)
     with open(STATE_PATH, "w") as f:
         json.dump(state, f, indent=2, default=str)
+
+
+def archive_finished_trades(state: dict) -> int:
+    """Move CLOSED/CANCELLED trades from the live state into the archive file."""
+    done = [t for t in state["trades"] if t["status"] in ("CLOSED", "CANCELLED")]
+    if not done:
+        return 0
+    archive = []
+    if os.path.exists(ARCHIVE_PATH):
+        with open(ARCHIVE_PATH) as f:
+            archive = json.load(f)
+    archive.extend(done)
+    os.makedirs(ORDERS_DIR, exist_ok=True)
+    with open(ARCHIVE_PATH, "w") as f:
+        json.dump(archive, f, indent=2, default=str)
+    state["trades"] = [t for t in state["trades"] if t["status"] not in ("CLOSED", "CANCELLED")]
+    return len(done)
+
+
+def is_trading_day(d: "dt.date | None" = None) -> bool:
+    """Weekday check. NSE holidays are not modelled - a holiday run is harmless
+    (orders just won't fill) but the session counters only advance on weekdays."""
+    d = d or dt.date.today()
+    return d.weekday() < 5
+
+
+def weekday_sessions(start: dt.date, end: dt.date) -> int:
+    """Number of weekdays strictly after `start`, up to and including `end`."""
+    n, d = 0, start
+    while d < end:
+        d += dt.timedelta(days=1)
+        if d.weekday() < 5:
+            n += 1
+    return n
 
 
 def inr(x: float) -> str:

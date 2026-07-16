@@ -12,7 +12,9 @@ def rsi(close: pd.Series, period: int) -> pd.Series:
     avg_loss = loss.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0.0, np.nan)
     out = 100.0 - 100.0 / (1.0 + rs)
-    return out.fillna(100.0).where(avg_loss.notna(), np.nan)
+    out = out.fillna(100.0)                                  # all-gain: RSI 100
+    out = out.mask((avg_gain == 0) & (avg_loss == 0), 50.0)  # flat series: neutral
+    return out.where(avg_loss.notna(), np.nan)
 
 
 def atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
