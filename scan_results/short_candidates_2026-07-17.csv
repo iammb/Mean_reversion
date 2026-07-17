@@ -1,0 +1,24 @@
+symbol,close,score,setup,rsi2,rsi14,pct_b,zscore,atr_stretch,ret5_pct,consec_up,vol_climax,adx,below_200dma,turnover_cr,day_low,atr14,entry,stop,target_20ema,risk_pct,reward_risk,fno,lot_size,name,industry
+SBICARD,654.7,84.0,DEAD-CAT BOUNCE,99.0,66.3,1.02,2.08,2.12,7.0,7,Y,16.5,Y,106.3,637.0,16.89,654.7,674.64,618.83,3.05,1.8,Y,800,SBI Cards and Payment Services Ltd.,Financial Services
+ECLERX,1979.8,83.0,BLOWOFF EXTENSION,99.5,82.9,1.16,2.66,4.65,22.1,2,Y,27.9,,91.5,1744.2,84.52,1979.8,2109.52,1586.86,6.55,3.03,,0,eClerx Services Ltd.,Services
+TCS,2269.0,76.0,DEAD-CAT BOUNCE,99.4,63.6,1.09,2.38,2.08,10.3,6,,19.3,Y,1108.0,2215.1,63.71,2269.0,2338.71,2136.32,3.07,1.9,Y,225,Tata Consultancy Services Ltd.,Information Technology
+APTUS,306.85,73.0,BLOWOFF EXTENSION,99.4,75.4,1.0,2.01,2.55,8.1,7,,33.5,,35.0,296.95,8.79,306.85,317.79,284.41,3.57,2.05,,0,Aptus Value Housing Finance India Ltd.,Financial Services
+KALYANKJIL,574.4,72.0,BLOWOFF EXTENSION,97.8,84.1,1.0,2.0,4.89,20.6,1,,29.8,,1854.8,541.25,25.29,574.4,602.79,450.81,4.94,4.35,Y,1350,Kalyan Jewellers India Ltd.,Consumer Durables
+TECHM,1572.9,66.0,BLOWOFF EXTENSION,96.5,69.0,1.11,2.43,2.5,8.1,3,Y,16.0,,396.4,1527.3,47.46,1572.9,1632.46,1454.1,3.79,1.99,Y,600,Tech Mahindra Ltd.,Information Technology
+AIIL,571.0,65.0,BLOWOFF EXTENSION,94.5,67.0,1.25,2.99,2.28,11.1,2,Y,19.9,,18.8,511.15,22.32,571.0,607.17,520.17,6.33,1.41,,0,Authum Investment & Infrastructure Ltd.,Financial Services
+INDIACEM,410.3,65.0,BLOWOFF EXTENSION,96.8,67.6,1.29,3.18,2.34,7.8,3,Y,18.2,,12.4,395.05,10.65,410.3,423.75,385.41,3.28,1.85,,0,India Cements Ltd.,Construction Materials
+HSCL,741.55,62.0,BLOWOFF EXTENSION,99.6,68.9,1.19,2.76,2.36,12.3,7,,17.4,,820.6,706.55,27.94,741.55,772.44,675.59,4.17,2.14,,0,Himadri Speciality Chemical Ltd.,Chemicals
+MRPL,174.49,52.0,BLOWOFF EXTENSION,90.8,66.5,1.1,2.42,2.12,7.4,3,Y,17.8,,315.7,165.37,7.7,174.49,186.6,158.18,6.94,1.35,,0,Mangalore Refinery & Petrochemicals Ltd.,Oil Gas & Consumable Fuels
+JSL,737.5,47.0,DEAD-CAT BOUNCE,92.2,62.5,1.02,2.08,1.53,2.9,0,,19.6,Y,41.4,732.4,17.73,737.5,759.48,710.38,2.98,1.23,,0,Jindal Stainless Ltd.,Metals & Mining
+ABBOTINDIA,28055.0,43.0,OVERBOUGHT (weak ctx),98.9,70.7,0.94,1.77,2.4,3.3,7,,25.2,,35.6,27445.0,511.76,28055.0,28681.76,26829.09,2.23,1.96,,0,Abbott India Ltd.,Healthcare
+ICICIBANK,1444.3,40.0,OVERBOUGHT (weak ctx),98.3,70.8,0.99,1.96,2.13,3.1,3,,33.7,,1674.0,1419.7,25.11,1444.3,1480.21,1390.76,2.49,1.49,Y,700,ICICI Bank Ltd.,Financial Services
+FEDERALBNK,349.0,39.0,BLOWOFF EXTENSION,95.2,74.6,1.38,3.51,2.77,5.8,1,Y,36.2,,271.4,323.4,7.79,349.0,358.79,327.41,2.81,2.2,Y,2500,Federal Bank Ltd.,Financial Services
+EXIDEIND,435.2,34.0,OVERBOUGHT (weak ctx),95.9,72.6,0.88,1.52,2.22,2.5,2,Y,32.1,,191.5,418.55,10.98,435.2,447.53,410.86,2.83,1.97,Y,1800,Exide Industries Ltd.,Automobile and Auto Components
+BHARATFORG,2190.5,33.0,BLOWOFF EXTENSION,91.2,65.1,1.14,2.58,1.41,3.5,2,,29.6,,283.2,2101.0,59.42,2190.5,2256.12,2106.55,3.0,1.28,Y,500,Bharat Forge Ltd.,Automobile and Auto Components
+FLUOROCHEM,4144.9,28.0,OVERBOUGHT (weak ctx),91.5,69.9,1.06,2.24,1.78,5.2,1,,20.8,,60.7,4043.2,114.0,4144.9,4283.9,3941.42,3.35,1.46,,0,Gujarat Fluorochemicals Ltd.,Chemicals
+SONACOMS,704.85,26.0,OVERBOUGHT (weak ctx),97.8,79.5,0.99,1.94,2.83,5.4,3,Y,50.3,,153.7,680.35,17.69,704.85,726.14,654.82,3.02,2.35,Y,1225,Sona BLW Precision Forgings Ltd.,Automobile and Auto Components
+IPCALAB,1900.6,23.0,OVERBOUGHT (weak ctx),99.2,81.2,0.9,1.61,2.51,6.3,7,,44.5,,48.9,1846.8,54.41,1900.6,1999.31,1764.21,5.19,1.38,,0,Ipca Laboratories Ltd.,Healthcare
+CEMPRO,1615.0,23.0,OVERBOUGHT (weak ctx),99.2,81.8,0.8,1.21,2.51,3.1,7,,66.3,,88.6,1561.7,65.58,1615.0,1712.88,1450.29,6.06,1.68,,0,Cemindia Projects Ltd.,Construction
+BAJFINANCE,1056.3,14.0,OVERBOUGHT (weak ctx),93.0,68.8,0.94,1.76,2.15,3.5,3,,38.4,,871.6,1037.6,23.93,1056.3,1082.43,1004.88,2.47,1.97,Y,750,Bajaj Finance Ltd.,Financial Services
+OFSS,11771.0,8.0,OVERBOUGHT (weak ctx),88.3,73.9,0.81,1.25,2.0,1.0,2,,32.2,,371.3,11337.0,344.35,11771.0,12302.35,11081.52,4.51,1.3,Y,100,Oracle Financial Services Software Ltd.,Information Technology
+BALRAMCHIN,604.45,8.0,OVERBOUGHT (weak ctx),88.5,68.4,0.94,1.75,2.01,6.6,2,,33.2,,33.3,595.1,17.23,604.45,630.23,569.82,4.26,1.34,,0,Balrampur Chini Mills Ltd.,Fast Moving Consumer Goods

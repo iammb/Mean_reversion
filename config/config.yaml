@@ -46,6 +46,15 @@ exits:
   time_stop_sessions: 7       # close at market after 7 sessions, thesis expired
   mis_squareoff_time: "15:10" # square off MIS shorts before broker auto-squareoff
 
+live:                         # intraday layer (scripts/live_scan.py)
+  scan_start: "09:20"         # let the opening auction noise settle first
+  entry_cutoff: "11:00"       # IST - no entries after this, script exits
+  rescan_interval_sec: 300    # full watchlist re-rank every 5 minutes
+  entry_check_interval_sec: 60   # ARMED names checked every 1-minute bar
+  arm_distance_atr: 0.5       # ARMED when price is within 0.5 ATR of trigger
+  opening_range_min: 15       # opening-range window for structure checks
+  rvol_min: 0.8               # min relative volume to allow an entry
+
 kite:
   api_key_env: KITE_API_KEY         # set in config/secrets.env
   api_secret_env: KITE_API_SECRET

@@ -32,13 +32,16 @@ mean_reversion/
 │       ├── auth.py            # daily login / session
 │       ├── instruments.py     # equity + nearest-expiry futures resolution
 │       └── orders.py          # entry, stop/target OCO, square-off (dry-run aware)
+│   └── live/                  # intraday layer: live data, VWAP/RVOL/gap
+│                              # metrics, watchlist arming + 1m confirmation
 ├── scripts/                   # the daily workflow, in order:
 │   ├── run_scan.py            #   1. post-close: scan -> candidates CSV
-│   ├── plan_trades.py         #   2. evening: filter + size -> trade plan JSON
-│   ├── kite_login.py          #   3. morning: mint today's access token
-│   ├── place_entries.py       #   4. at open: place entry orders
-│   └── manage_positions.py    #   5. intraday/daily: fills, exits, time stop
-└── tests/                     # pytest suite: indicators, sizing, filters
+│   ├── kite_login.py          #   2. morning: mint today's access token
+│   ├── live_scan.py           #   3. 09:15-11:00 IST: live filter -> 1m entries
+│   ├── manage_positions.py    #   4. intraday/daily: exits, time stop
+│   ├── plan_trades.py         #   (EOD-only alternative to live_scan)
+│   └── place_entries.py       #   (EOD-only alternative: resting SL orders)
+└── tests/                     # pytest suite: indicators, sizing, filters, intraday
 ```
 
 ## Setup
@@ -50,25 +53,62 @@ python3 -m venv .venv
 cp config/secrets.env.example config/secrets.env   # add your Kite Connect keys
 ```
 
-## Daily workflow
+## Daily workflow (live intraday mode)
 
 ```bash
-# 1. after market close - scan the universe
+# 1. previous evening, after market close - scan the universe
 .venv/bin/python scripts/run_scan.py
 
-# 2. build the trade plan (filters + position sizing)
-.venv/bin/python scripts/plan_trades.py
-
-# 3. next morning (live only) - mint today's Kite access token
+# 2. morning (live only) - mint today's Kite access token
 .venv/bin/python scripts/kite_login.py
 
-# 4. place entries (dry run prints orders; --live sends them)
-.venv/bin/python scripts/place_entries.py           # dry run
-.venv/bin/python scripts/place_entries.py --live    # real orders
+# 3. run the live morning session: watchlist -> live filters -> 1m entries.
+#    Scanning and all entries complete by 11:00 IST, then the script exits.
+.venv/bin/python scripts/live_scan.py            # dry run
+.venv/bin/python scripts/live_scan.py --once     # single pass, works any time
+.venv/bin/python scripts/live_scan.py --live     # real orders
 
-# 5. run every few minutes while market is open (cron/loop)
+# 4. exits/time-stop management for open positions (run through the day)
 .venv/bin/python scripts/manage_positions.py --live
 ```
+
+(`plan_trades.py` + `place_entries.py` remain as the EOD-only alternative:
+resting SL orders at the trigger instead of live 1-minute confirmation.)
+
+## The live intraday layer
+
+Selection is the priority: a name must pass **two** stages before any order.
+
+**Stage 1 - EOD (previous session's close, the backtest-validated edge):**
+dead-cat-bounce setup, score ≥ 50, F&O, ban list, ADX ≤ 35, R:R ≥ 1.2 at
+the trigger, stop ≤ 6%, position sizing must succeed.
+
+**Stage 2 - live (09:15 → 11:00 IST, re-ranked every 5 minutes):**
+
+| Check | Rule |
+|---|---|
+| Gap up ≥ 2% | **DROP** — the bounce is still running |
+| Gap through trigger | entry re-anchored to the 15-min opening-range low — only chase if the breakdown *continues* |
+| Move gone | **DROP** if price already fell >⅓ of the way to target with < 1.0 R:R left |
+| VWAP | entries only below session VWAP (bounce failing now) |
+| RVOL | today's volume vs time-adjusted 20-day average; ≥ 0.8 required, ≥ 1.5 scores extra |
+| Relative strength | stock %chg minus Nifty %chg — weaker than the market scores extra |
+| Structure | below the opening-range low scores extra |
+| Proximity | within 0.5 ATR of the entry level → **ARMED** |
+
+**Entry (1-minute timeframe):** an ARMED name enters short only when a
+1-minute bar **closes** below the entry level while below VWAP with
+acceptable RVOL — a confirmed failed bounce, not a one-tick spike. Exits
+(GTT OCO stop/target + time stop) are placed immediately and handed to
+`manage_positions.py`. Hard cutoff 11:00 IST; capacity, kill-switch and
+duplicate checks all apply.
+
+Live data: Yahoo Finance 1-minute bars (delayed a minute or two; degrades
+to 5m if 1m is unavailable). Slot a Kite Connect quote feed into
+`src/mr_short/live/data.py` for true realtime. **Note:** the daily-level
+edge is backtested; the 1-minute confirmation layer is principled execution
+refinement but is *not* independently backtested (free 1m history is ~7
+days) - paper-trade it before trusting it.
 
 ---
 

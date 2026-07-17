@@ -79,6 +79,15 @@ class OrderEngine:
             product=self._product_code(inst), order_type="MARKET", validity="DAY",
         )
 
+    def place_short_market(self, inst: Instrument, qty: int, reason: str) -> str:
+        """Immediate short entry - used by the live 1-minute confirmation."""
+        return self._place(
+            f"ENTRY short {inst.tradingsymbol} x{qty} MARKET ({reason})",
+            exchange=inst.exchange, tradingsymbol=inst.tradingsymbol,
+            transaction_type="SELL", quantity=qty,
+            product=self._product_code(inst), order_type="MARKET", validity="DAY",
+        )
+
     # ------------------------------------------------------------------
     def place_exit_pair(self, inst: Instrument, qty: int, stop: float, target: float):
         """Stop-loss + target for an open short. Returns (sl_id, target_id)."""
