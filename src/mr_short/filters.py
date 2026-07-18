@@ -16,6 +16,9 @@ def select_candidates(scan: pd.DataFrame, cfg: dict):
     """Apply config filters. Returns (selected_df, rejections list of (symbol, reason))."""
     f = cfg["filters"]
     r = cfg["risk"]
+    # in fvg_retrace mode the stop comes from the intraday zone, so the
+    # EOD wide-stop geometry gates (reward:risk, stop distance) don't apply
+    fvg_mode = cfg.get("entry", {}).get("mode") == "fvg_retrace"
     rejections = []
     banned = fetch_ban_list() if f.get("exclude_ban_list", True) else set()
     if banned:
@@ -34,9 +37,9 @@ def select_candidates(scan: pd.DataFrame, cfg: dict):
             rejections.append((sym, "in F&O ban list"))
         elif row["adx"] > f["max_adx"]:
             rejections.append((sym, f"ADX {row['adx']:.0f} > {f['max_adx']} (trending)"))
-        elif row["reward_risk"] < r["min_reward_risk"]:
+        elif not fvg_mode and row["reward_risk"] < r["min_reward_risk"]:
             rejections.append((sym, f"reward:risk {row['reward_risk']:.2f} < {r['min_reward_risk']}"))
-        elif row["risk_pct"] > r["max_stop_distance_pct"]:
+        elif not fvg_mode and row["risk_pct"] > r["max_stop_distance_pct"]:
             rejections.append((sym, f"stop {row['risk_pct']:.1f}% away > {r['max_stop_distance_pct']}%"))
         else:
             keep.append(row)

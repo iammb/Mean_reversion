@@ -23,17 +23,21 @@ filters:
   allowed_setups:             # v2: DEAD-CAT BOUNCE only. BLOWOFF EXTENSION
     - "DEAD-CAT BOUNCE"       # backtested at PF 0.61 - fading strength in
                               # India loses; shorting bounced weakness wins
-  fno_only: true              # only F&O names (shortable overnight)
+  fno_only: false             # v3 intraday: MIS cash shorts are legal on ANY
+                              # stock, so the whole liquid universe is fair game
   max_adx: 35                 # never fade a freight train
   exclude_ban_list: true      # drop names in the NSE F&O ban list
 
 entry:
-  mode: breakdown             # breakdown = SL sell below scan-day low (confirmation)
-                              # at_open  = sell at next open (aggressive)
+  mode: fvg_retrace           # v3: breakdown arms a retrace hunt; enter on the
+                              # pullback into an FVG/IFVG zone (tight stop above
+                              # the zone -> far better R:R than the daily stop).
+                              # breakdown = legacy SL-sell below scan-day low
+                              # at_open   = sell at next open (aggressive)
   breakdown_buffer_pct: 0.10  # trigger = scan-day low * (1 - 0.10%)
   limit_slippage_pct: 0.25    # SL order limit price this far below trigger
-  product: NRML_FUT           # NRML_FUT = short current-month futures (multi-day)
-                              # MIS_EQ   = intraday cash short (auto square-off)
+  product: MIS_EQ             # v3: intraday cash short, squared off same day
+                              # (NRML_FUT = multi-day futures, legacy mode)
   entry_valid_sessions: 1     # entry orders are DAY validity; they are re-armed
                               # each morning until this many sessions have passed
 
@@ -44,7 +48,8 @@ exits:
   gtt_stop_limit_buffer_pct: 0.5  # stop leg fires a BUY LIMIT this far above its
                               # trigger so it fills like a market order
   time_stop_sessions: 7       # close at market after 7 sessions, thesis expired
-  mis_squareoff_time: "15:10" # square off MIS shorts before broker auto-squareoff
+                              # (legacy NRML mode; MIS is same-day by definition)
+  mis_squareoff_time: "14:55" # v3: flat before 15:00, ahead of broker RMS
 
 live:                         # intraday layer (scripts/live_scan.py)
   scan_start: "09:20"         # let the opening auction noise settle first
@@ -54,6 +59,12 @@ live:                         # intraday layer (scripts/live_scan.py)
   arm_distance_atr: 0.5       # ARMED when price is within 0.5 ATR of trigger
   opening_range_min: 15       # opening-range window for structure checks
   rvol_min: 0.8               # min relative volume to allow an entry
+  # --- fvg_retrace entry mode ---
+  fvg_min_gap_pct: 0.05       # min 3-candle gap size (% of price) to count
+  zone_buffer_pct: 0.05       # stop sits this far above the zone top
+  intraday_target_r: 2.5      # target = daily 20-EMA or 2.5R, whichever nearer
+  min_entry_rr: 1.5           # skip retests offering less than this R:R
+  min_reward_move_pct: 1.5    # EOD gate: trigger->target meat required
 
 kite:
   api_key_env: KITE_API_KEY         # set in config/secrets.env

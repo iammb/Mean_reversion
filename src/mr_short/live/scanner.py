@@ -43,9 +43,10 @@ class Candidate:
     lots: int
     lot_size: int
     # live state
-    status: str = "WATCH"   # WATCH | ARMED | DROPPED | ENTERED
+    status: str = "WATCH"   # WATCH | ARMED | BROKEN | DROPPED | ENTERED
     drop_reason: str = ""
     entry_level: float = 0.0   # trigger, possibly re-anchored on gap-through
+    break_idx: int = -1        # completed-bar index of the confirmed breakdown
     live: dict = field(default_factory=dict)
 
 
@@ -56,6 +57,15 @@ def evaluate_candidate(c: Candidate, bars: pd.DataFrame,
         return
     if bars is None or bars.empty:
         c.live = {"note": "no live data"}
+        return
+
+    if c.status == "BROKEN":
+        # reclaim check: a completed close back ABOVE the broken level means
+        # the breakdown failed - go back to ARMED and wait for a fresh break
+        done = bars.iloc[:-1]
+        if len(done) and float(done["Close"].iloc[-1]) > c.entry_level:
+            c.status, c.break_idx = "ARMED", -1
+            log.info(f"{c.symbol}: level reclaimed - breakdown cancelled")
         return
 
     minutes = market_minutes_elapsed()
@@ -106,6 +116,45 @@ def check_entry(c: Candidate, bars: pd.DataFrame, cfg_live: dict) -> bool:
     rv = rvol(bars, c.avg_daily_volume, market_minutes_elapsed())
     return entry_confirmed(bars, c.entry_level, vwap, rv,
                            cfg_live.get("rvol_min", 0.8))
+
+
+def check_breakdown(c: Candidate, bars: pd.DataFrame, cfg_live: dict) -> bool:
+    """FVG mode phase 1: the 1-minute breakdown does NOT enter - it starts
+    the retrace hunt. Marks the candidate BROKEN and remembers the bar."""
+    if not check_entry(c, bars, cfg_live):
+        return False
+    c.status = "BROKEN"
+    c.break_idx = len(bars) - 2          # the completed bar that confirmed
+    log.info(f"{c.symbol}: breakdown confirmed below {c.entry_level:.2f} - "
+             f"hunting FVG/IFVG retrace entry")
+    return True
+
+
+def build_fvg_entry(c: Candidate, bars: pd.DataFrame, cfg_live: dict):
+    """FVG mode phase 2: look for the retrace-rejection short. Returns
+    {entry, stop, target, style, rr} or None."""
+    from .fvg import find_short_entry
+
+    if c.status != "BROKEN" or bars is None or bars.empty:
+        return None
+    vwap = session_vwap(bars)
+    sig = find_short_entry(bars, c.entry_level, c.break_idx, vwap,
+                           cfg_live.get("fvg_min_gap_pct", 0.05),
+                           cfg_live.get("zone_buffer_pct", 0.05))
+    if not sig:
+        return None
+    entry, stop, style = sig
+    risk = stop - entry
+    if risk <= 0:
+        return None
+    # target: the daily 20-EMA, or the R-multiple extension if that's nearer
+    target = max(c.target, entry - cfg_live.get("intraday_target_r", 2.5) * risk)
+    rr = (entry - target) / risk
+    if rr < cfg_live.get("min_entry_rr", 1.5):
+        log.info(f"{c.symbol}: {style} retest found but R:R only {rr:.2f} - pass")
+        return None
+    return {"entry": entry, "stop": stop, "target": round(target, 2),
+            "style": style, "rr": round(rr, 2)}
 
 
 def rank_table(cands: list) -> pd.DataFrame:

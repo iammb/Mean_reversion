@@ -96,12 +96,31 @@ the trigger, stop ≤ 6%, position sizing must succeed.
 | Structure | below the opening-range low scores extra |
 | Proximity | within 0.5 ATR of the entry level → **ARMED** |
 
-**Entry (1-minute timeframe):** an ARMED name enters short only when a
-1-minute bar **closes** below the entry level while below VWAP with
-acceptable RVOL — a confirmed failed bounce, not a one-tick spike. Exits
-(GTT OCO stop/target + time stop) are placed immediately and handed to
-`manage_positions.py`. Hard cutoff 11:00 IST; capacity, kill-switch and
-duplicate checks all apply.
+**Entry (v3 — `fvg_retrace` mode, 1-minute timeframe, intraday-only):**
+the 1-minute close below the entry level no longer enters — it **arms a
+retrace hunt** (status BROKEN). The actual short fires on the pullback,
+in priority order:
+
+1. **IFVG retest** — the morning bounce paints bullish FVGs on the way up;
+   the breakdown closes below one, inverting it into resistance. Short the
+   rejection at its underside.
+2. **Bearish FVG retrace** — the breakdown displacement leaves a 3-candle
+   gap; short the rejection when price wicks back into it and closes below.
+3. **Break-retest fallback** — no gap formed: short the failed retest of
+   the broken level itself.
+
+Every style stops **just above the zone** (+0.05%), not the daily swing
+high — that tight structural stop is where the improved R:R comes from
+(min 1.5 R:R enforced at entry; target = daily 20-EMA or 2.5R, whichever
+is nearer). Sizing happens at entry off the live stop distance. If the
+level gets reclaimed (close back above), the hunt is cancelled; if price
+runs without retracing, the trade is skipped — no chasing.
+
+**Session discipline:** entries only 09:20–11:00 IST; every position is
+**squared off by 14:55** (flat before 3 PM — MIS product, so any liquid
+NSE stock qualifies, not just F&O). Capacity, kill-switch and duplicate
+checks all apply. Legacy `breakdown` mode (multi-day futures + GTT) is
+still available via `entry.mode` in config.
 
 Live data: Yahoo Finance 1-minute bars (delayed a minute or two; degrades
 to 5m if 1m is unavailable). Slot a Kite Connect quote feed into
